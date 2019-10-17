@@ -1,0 +1,217 @@
+<html>
+
+<head>
+	<title>Line Chart</title>
+	<script async="" src="//www.google-analytics.com/analytics.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.13.0/moment.min.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.8.0/Chart.min.js"></script>
+	<script src="utils.js"></script>
+	<style>
+		canvas {
+			-moz-user-select: none;
+			-webkit-user-select: none;
+			-ms-user-select: none;
+		}
+	</style>
+	<style type="text/css">
+		/* Chart.js */
+		@keyframes chartjs-render-animation {
+			from {
+				opacity: .99
+			}
+
+			to {
+				opacity: 1
+			}
+		}
+
+		.chartjs-render-monitor {
+			animation: chartjs-render-animation 1ms
+		}
+
+		.chartjs-size-monitor,
+		.chartjs-size-monitor-expand,
+		.chartjs-size-monitor-shrink {
+			position: absolute;
+			direction: ltr;
+			left: 0;
+			top: 0;
+			right: 0;
+			bottom: 0;
+			overflow: hidden;
+			pointer-events: none;
+			visibility: hidden;
+			z-index: -1
+		}
+
+		.chartjs-size-monitor-expand>div {
+			position: absolute;
+			width: 1000000px;
+			height: 1000000px;
+			left: 0;
+			top: 0
+		}
+
+		.chartjs-size-monitor-shrink>div {
+			position: absolute;
+			width: 200%;
+			height: 200%;
+			left: 0;
+			top: 0
+		}
+	</style>
+</head>
+
+<body>
+	<div style="width:75%;">
+		<div class="chartjs-size-monitor">
+			<div class="chartjs-size-monitor-expand">
+				<div class=""></div>
+			</div>
+			<div class="chartjs-size-monitor-shrink">
+				<div class=""></div>
+			</div>
+		</div>
+		<canvas id="canvas" width="926" height="463" class="chartjs-render-monitor"
+			style="display: block; width: 926px; height: 463px;"></canvas>
+	</div>
+
+	<script>
+		var values = [];
+		var timeStamp = [];
+
+
+
+		var color = Chart.helpers.color;
+		var config = {
+			type: 'line',
+			data: {
+				labels: timeStamp, //Bottom Labeling
+				datasets: [{
+					label: "Voltage 1",
+					fill: false, //Try with true
+					backgroundColor: 'rgba( 243, 156, 18 , 1)', //Dot marker color
+					borderColor: 'rgba( 243, 156, 18 , 1)', //Graph Line Color
+					data: values,
+				}],
+			},
+			options: {
+				title: {
+					display: true,
+					text: "ADC Voltage"
+				},
+				maintainAspectRatio: false,
+				elements: {
+					line: {
+						tension: 0.5 //Smoothening (Curved) of data lines
+					}
+				},
+				scales: {
+					yAxes: [{
+						ticks: {
+							beginAtZero: true
+						}
+					}]
+				}
+			}
+		};
+
+		window.onload = function () {
+			var ctx = document.getElementById('canvas').getContext('2d');
+			window.myLine = new Chart(ctx, config);
+			start();
+		};
+
+		function start() {
+			Socket = new WebSocket('ws://' + window.location.hostname + ':81/');
+			Socket.onmessage = function (evt) {
+				document.getElementById("rxConsole").value += evt.data;
+				values.push(ADCValue)
+				config.data.datasets.values.push(ADCValue);
+				config.data.datasets.timeStamp.push(time);
+				window.myLine.update(); 
+			}
+		}
+
+		setInterval(function () {
+			// Call a function repetatively with 5 Second interval
+			getData();
+		}, 500); //5000mSeconds update rate
+
+
+		function getData() {
+			var xhttp = new XMLHttpRequest();
+			xhttp.onreadystatechange = function () {
+				if (this.readyState == 4 && this.status == 200) {
+					//Push the data in array
+					var time = new Date().toLocaleTimeString();
+					var ADCValue = this.responseText;
+					
+					config.data.datasets.values.push(ADCValue);
+					config.data.datasets.timeStamp.push(time);
+					window.myLine.update(); //Update Graphs
+				}
+			};
+			xhttp.open("GET", "readADC", true); //Handle readADC server on ESP8266
+			xhttp.send();
+		}
+
+		var colorNames = Object.keys(window.chartColors);
+		document.getElementById('addDataset').addEventListener('click', function () {
+			var colorName = colorNames[config.data.datasets.length % colorNames.length];
+			var newColor = window.chartColors[colorName];
+			var newDataset = {
+				label: 'Dataset ' + config.data.datasets.length,
+				borderColor: newColor,
+				backgroundColor: color(newColor).alpha(0.5).rgbString(),
+				data: [],
+			};
+
+			for (var index = 0; index < config.data.labels.length; ++index) {
+				newDataset.data.push(randomScalingFactor());
+			}
+
+			config.data.datasets.push(newDataset);
+			window.myLine.update();
+		});
+
+		document.getElementById('addData').addEventListener('click', function () {
+			if (config.data.datasets.length > 0) {
+				config.data.labels.push(newDate(config.data.labels.length));
+
+				for (var index = 0; index < config.data.datasets.length; ++index) {
+					if (typeof config.data.datasets[index].data[0] === 'object') {
+						config.data.datasets[index].data.push({
+							x: newDate(config.data.datasets[index].data.length),
+							y: randomScalingFactor(),
+						});
+					} else {
+						config.data.datasets[index].data.push(randomScalingFactor());
+					}
+				}
+
+				window.myLine.update();
+			}
+		});
+
+		document.getElementById('removeDataset').addEventListener('click', function () {
+			config.data.datasets.splice(0, 1);
+			window.myLine.update();
+		});
+
+		document.getElementById('removeData').addEventListener('click', function () {
+			config.data.labels.splice(-1, 1); // remove the label first
+
+			config.data.datasets.forEach(function (dataset) {
+				dataset.data.pop();
+			});
+
+			window.myLine.update();
+		});
+	</script>
+
+
+
+</body>
+
+</html>
